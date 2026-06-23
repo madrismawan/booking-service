@@ -34,17 +34,6 @@ func (r *WaitingRoomRepository) FindByQueueToken(queueToken string) (*model.Wait
 	return &waitingRoom, err
 }
 
-func (r *WaitingRoomRepository) FindByQueueTokenForUpdate(queueToken string) (*model.WaitingRoom, error) {
-	var waitingRoom model.WaitingRoom
-	err := r.db.Clauses(clause.Locking{Strength: "UPDATE"}).
-		Where("queue_token = ?", queueToken).
-		First(&waitingRoom).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, ErrNotFound
-	}
-	return &waitingRoom, err
-}
-
 func (r *WaitingRoomRepository) FindByCheckoutTokenForUpdate(checkoutToken string) (*model.WaitingRoom, error) {
 	var waitingRoom model.WaitingRoom
 	err := r.db.Clauses(clause.Locking{Strength: "UPDATE"}).

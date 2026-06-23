@@ -122,7 +122,7 @@ func (s *WaitingRoomService) MarkReady(queueToken string, ttl time.Duration) (*m
 	err := s.txManager.Transaction(func(tx *gorm.DB) error {
 		service := s.WithTx(tx)
 
-		record, err := service.repo.FindByQueueTokenForUpdate(queueToken)
+		record, err := service.repo.FindByQueueToken(queueToken)
 		if err != nil {
 			return err
 		}

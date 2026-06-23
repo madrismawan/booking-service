@@ -68,9 +68,3 @@ Tujuannya adalah supaya proses cek stock dan decrement stock berjalan berurutan,
 2. Ada risiko deadlock jika locking tidak konsisten
 
    Jika di masa depan ada proses lain yang mengunci beberapa table atau row dengan urutan berbeda, database bisa mengalami deadlock. Untuk menghindarinya, urutan akses data perlu dibuat konsisten.
-
-## Kesimpulan
-
-`FOR UPDATE` cocok digunakan pada case ini karena stock ticket adalah data yang sensitif terhadap concurrency. Dengan lock ini, sistem bisa menjaga agar stock tidak berkurang secara salah saat banyak booking terjadi bersamaan.
-
-Trade-off-nya adalah performa bisa sedikit lebih lambat pada traffic tinggi, terutama jika banyak request mengakses stock ticket yang sama. Karena itu, transaction harus dijaga tetap singkat dan fokus hanya pada proses yang memang perlu konsisten.

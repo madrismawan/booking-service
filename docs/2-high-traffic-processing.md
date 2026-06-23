@@ -1,171 +1,112 @@
-# High Traffic Processing Dengan Waiting Room Queue
+# High Traffic Processing Dengan Waiting Room
 
 ## Analisa
 
-Pada traffic tinggi, misalnya 10.000 request per menit, proses booking sebaiknya tidak langsung masuk ke checkout. Jika semua request langsung checkout, maka database akan menerima banyak transaction yang sama-sama mencoba mengurangi stock ticket.
+Masalah high traffic terjadi ketika banyak user masuk ke flow beli tiket di waktu yang sama.
 
-Untuk mengurangi beban tersebut, user dimasukkan dulu ke waiting room. API cukup menerima request, membuat `queue_token`, menyimpan data ke database, lalu mengirim message ke RabbitMQ.
+Solusi di aplikasi ini adalah membuat waiting room sederhana sebelum checkout. Waiting room hanya menampung request user, menyimpan queue ke database, lalu mengirim message ke RabbitMQ lewat publisher.
 
-User akan mendapat response awal:
+Flow ini terjadi sebelum proses pada:
 
-```json
-{
-  "message": "you are in queue",
-  "queue_token": "queue_xxx",
-  "ticket_category_id": 1,
-  "status": "waiting"
-}
-```
+`docs/1-race-condtion.md`
 
-Dengan flow ini, request tetap bisa diterima oleh sistem, tapi tidak semuanya langsung diproses menjadi booking.
+Jadi waiting room bukan tempat mengurangi stock. Waiting room hanya mengatur apakah user boleh lanjut checkout atau tidak.
 
-## Penggunaan RabbitMQ
+## Flow Waiting Room
 
-RabbitMQ dipakai untuk menampung antrian waiting room. Queue bisa membawa `ticket_category_id`, supaya checkout token terikat ke kategori tiket yang spesifik.
-
-Contoh queue:
-
-```text
-waiting_room.queue
-```
-
-Misalnya:
-
-```text
-waiting_room.queue
-```
-
-Endpoint untuk masuk queue:
+User masuk lewat endpoint:
 
 ```http
 POST /api/v1/ticket-categories/:ticket_category_id/queue/join
 ```
 
-Pada endpoint ini sistem akan:
+Service akan membuat data `waiting_rooms` dengan status `waiting`:
 
-1. Validasi ticket category berdasarkan `ticket_category_id`
-2. Generate `queue_token`
-3. Simpan data queue ke database dengan status `waiting` dan `ticket_category_id`
-4. Publish message ke RabbitMQ
-5. Return response `you are in queue`
-
-Setelah itu, user bisa cek status queue lewat endpoint:
-
-```http
-GET /api/v1/queue/:queue_token/status
-```
-
-Jika status sudah `ready`, response akan mengembalikan `checkout_token`.
-
-```json
-{
-  "status": "ready",
-  "ticket_category_id": 1,
-  "checkout_token": "checkout_xxx",
-  "expired_at": "2026-06-23T10:05:00Z"
+```go
+waitingRoom := model.WaitingRoom{
+	EventID:          category.EventID,
+	EventName:        category.Event.Name,
+	TicketCategoryID: category.ID,
+	QueueToken:       queueToken,
+	Status:           model.WaitingRoomStatusWaiting,
 }
 ```
 
-## Worker Waiting Room
+Setelah data tersimpan, service publish message ke RabbitMQ:
 
-Worker bertugas membaca message dari RabbitMQ dan mengubah status user dari `waiting` menjadi `ready`.
+```go
+err = s.publisher.PublishJSON(ctx, rabbitmq.WaitingRoomQueue, rabbitmq.WaitingRoomMessage{
+	TicketCategoryID: waitingRoom.TicketCategoryID,
+	QueueToken:       waitingRoom.QueueToken,
+	CreatedAt:        time.Now(),
+})
+```
 
-Saat worker memproses queue, sistem akan:
+Publisher ini menjadi pemisah antara request user dan proses worker. Response ke user cukup berisi `queue_token`, supaya user bisa cek status queue tanpa menunggu proses checkout.
 
-1. Ambil message dari RabbitMQ
-2. Cari data queue berdasarkan `queue_token`
-3. Generate `checkout_token`
-4. Set status menjadi `ready`
-5. Set `expired_at` selama 5 menit
+## Proses Worker
 
-`checkout_token` ini dipakai user untuk lanjut ke proses checkout. Jika token sudah lewat dari 5 menit, status bisa diubah menjadi `expired`.
+Worker membaca message dari RabbitMQ secara bertahap. Setelah menerima message, worker memanggil:
 
-## Hubungan Dengan Checkout
+```go
+waitingRoom, processed, err := w.waitingRoomService.MarkReady(message.QueueToken, checkoutTokenTTL)
+```
 
-Waiting room tidak langsung mengurangi stock ticket. Waiting room hanya mengatur giliran user agar tidak semua request langsung masuk checkout.
+Di `MarkReady`, sistem mencari data waiting room berdasarkan `queue_token`:
 
-Stock baru dikurangi saat user sudah punya `checkout_token` dan melakukan checkout. Pada bagian ini, flow akan masuk ke proses booking yang memakai `FOR UPDATE`, seperti dijelaskan di:
+Lookup ini tidak memakai `FOR UPDATE` karena worker hanya memproses queue spesifik berdasarkan token. Prosesnya tidak perlu buru-buru mengunci row seperti proses pengurangan stock.
+
+Setelah itu worker mengecek stock ticket category:
+
+```go
+stock, err := service.ticketStockService.FindByTicketCategoryID(record.TicketCategoryID)
+```
+
+Jika stock masih memungkinkan, worker membuat `checkout_token` dan mengubah status menjadi `ready`. Jika stock habis atau slot checkout aktif sudah penuh, status menjadi `failed` dan `failed_reason` disimpan.
+
+## Sebelum Masuk Checkout
+
+User yang statusnya `ready` bisa lanjut ke booking memakai `checkout_token` dan `quantity`.
+
+Di booking, sistem tetap wajib validasi bahwa waiting room masih `ready`:
+
+```go
+if waitingRoom.TicketCategoryID != category.ID || waitingRoom.Status != model.WaitingRoomStatusReady {
+	return repository.ErrInvalidCheckout
+}
+```
+
+Baru setelah itu stock dikurangi lewat flow booking yang memakai `FOR UPDATE`, seperti dijelaskan di:
 
 `docs/1-race-condtion.md`
 
-Jadi pembagiannya:
+Ringkasnya:
 
 ```text
 Waiting room:
-- menerima traffic besar
+- menampung request
 - menyimpan queue
-- membuat checkout_token
+- publish message ke RabbitMQ
+- worker menentukan ready atau failed
+- membuat checkout_token jika user boleh checkout
 
 Checkout:
-- validasi checkout_token
-- cek stock
-- decrement stock dengan FOR UPDATE
+- menerima checkout_token dan quantity
+- validasi status ready
+- mengurangi stock dengan FOR UPDATE
 - membuat booking
 ```
 
-Dengan cara ini, RabbitMQ dipakai untuk mengatur traffic, sedangkan database transaction tetap dipakai untuk menjaga stock.
+## Trade-off
 
-## Status Queue
+1. User harus menunggu
 
-Status sederhana yang bisa dipakai:
+   User tidak langsung checkout. User perlu cek status queue sampai menjadi `ready`.
 
-```text
-waiting
-ready
-expired
-checkout_started
-completed
-failed
-```
+2. Perlu worker
 
-Penjelasan singkat:
+   Jika worker mati, request tetap tersimpan, tapi status bisa tertahan di `waiting`.
 
-1. `waiting`
+3. Ada kemungkinan gagal setelah masuk queue
 
-   User sudah masuk queue, tapi belum boleh checkout.
-
-2. `ready`
-
-   User sudah mendapat `checkout_token` dan boleh checkout.
-
-3. `expired`
-
-   `checkout_token` sudah lewat dari 5 menit.
-
-4. `checkout_started`
-
-   User sudah mulai proses checkout.
-
-5. `completed`
-
-   Booking berhasil dibuat.
-
-6. `failed`
-
-   Proses gagal, misalnya token tidak valid atau stock sudah habis.
-
-## Trade-off Menggunakan Waiting Room
-
-1. User tidak langsung checkout
-
-   User harus menunggu sampai status queue menjadi `ready`. Ini membuat flow sedikit lebih panjang, tapi sistem lebih aman saat traffic tinggi.
-
-2. Perlu proses worker
-
-   Karena antrian diproses oleh worker, sistem perlu memastikan worker selalu berjalan dan bisa memproses message dari RabbitMQ.
-
-3. Perlu handling expired token
-
-   `checkout_token` hanya berlaku 5 menit. Sistem perlu menangani token yang sudah expired agar slot checkout tidak tertahan terlalu lama.
-
-4. Data request bisa banyak
-
-   Saat traffic besar, database akan menyimpan banyak data queue. Jadi perlu indexing yang baik, terutama pada `queue_token`, `ticket_category_id`, dan `status`.
-
-## Kesimpulan
-
-Waiting room dengan RabbitMQ membantu menahan lonjakan traffic sebelum user masuk checkout. API bisa tetap cepat memberi response `you are in queue`, lalu worker memproses antrian secara bertahap.
-
-Request yang masuk bisa tetap disimpan di database, tapi statusnya berbeda-beda. Tidak semua request langsung menjadi booking. User baru masuk checkout ketika status queue sudah `ready` dan memiliki `checkout_token`.
-
-Untuk keamanan stock, proses decrement tetap dilakukan di checkout menggunakan `FOR UPDATE`.
+   Semua request bisa ditampung, tapi tidak semuanya pasti mendapat checkout token. Jika stock tidak cukup, status menjadi `failed`.
