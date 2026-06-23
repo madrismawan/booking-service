@@ -58,7 +58,7 @@ func NewOutboxWorker(
 }
 
 func (w *OutboxWorker) Start(ctx context.Context) error {
-	w.logger.Printf("outbox worker publishing to queue %q", rabbitmq.TicketStockChangedQueue)
+	w.logger.Printf("outbox worker started")
 
 	timer := time.NewTimer(0)
 	defer timer.Stop()
@@ -108,6 +108,46 @@ func (w *OutboxWorker) ProcessNext(ctx context.Context) (bool, error) {
 
 func (w *OutboxWorker) publish(ctx context.Context, event *model.OutboxEvent) error {
 	switch event.EventType {
+	case rabbitmq.WaitingRoomJoinedEventType:
+		var payload rabbitmq.WaitingRoomJoinedPayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return fmt.Errorf("decode waiting room event payload: %w", err)
+		}
+
+		message := rabbitmq.WaitingRoomMessage{
+			TicketCategoryID: payload.TicketCategoryID,
+			QueueToken:       payload.QueueToken,
+			CreatedAt:        payload.CreatedAt,
+		}
+
+		publishCtx, cancel := context.WithTimeout(ctx, w.publishTimeout)
+		defer cancel()
+		return w.publisher.PublishJSON(publishCtx, rabbitmq.WaitingRoomQueue, message)
+	case rabbitmq.AccountingPaymentSucceededEventType:
+		var payload rabbitmq.AccountingPaymentSucceededPayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return fmt.Errorf("decode accounting payment event payload: %w", err)
+		}
+
+		message := rabbitmq.AccountingPaymentSucceededMessage{
+			EventID:              event.ID,
+			EventType:            rabbitmq.AccountingPaymentSucceededEventType,
+			SchemaVersion:        rabbitmq.AccountingPaymentSucceededSchemaVersion,
+			PaymentTransactionID: payload.PaymentTransactionID,
+			BookingID:            payload.BookingID,
+			BookingCode:          payload.BookingCode,
+			Amount:               payload.Amount,
+			PaidAt:               payload.PaidAt,
+			Attempt:              1,
+		}
+
+		publishCtx, cancel := context.WithTimeout(ctx, w.publishTimeout)
+		defer cancel()
+		return w.publisher.PublishJSON(
+			publishCtx,
+			rabbitmq.AccountingPaymentSucceededQueue,
+			message,
+		)
 	case rabbitmq.TicketStockChangedEventType:
 		var payload rabbitmq.TicketStockChangedPayload
 		if err := json.Unmarshal(event.Payload, &payload); err != nil {

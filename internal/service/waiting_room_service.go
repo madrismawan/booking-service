@@ -1,9 +1,9 @@
 package service
 
 import (
-	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -17,28 +17,24 @@ import (
 type WaitingRoomService struct {
 	txManager             *repository.TransactionManager
 	repo                  *repository.WaitingRoomRepository
+	outboxRepo            *repository.OutboxEventRepository
 	ticketCategoryService *TicketCategoryService
 	ticketStockService    *TicketStockService
-	publisher             waitingRoomPublisher
-}
-
-type waitingRoomPublisher interface {
-	PublishJSON(ctx context.Context, queueName string, payload any) error
 }
 
 func NewWaitingRoomService(
 	txManager *repository.TransactionManager,
 	repo *repository.WaitingRoomRepository,
+	outboxRepo *repository.OutboxEventRepository,
 	ticketCategoryService *TicketCategoryService,
 	ticketStockService *TicketStockService,
-	publisher waitingRoomPublisher,
 ) *WaitingRoomService {
 	return &WaitingRoomService{
 		txManager:             txManager,
 		repo:                  repo,
+		outboxRepo:            outboxRepo,
 		ticketCategoryService: ticketCategoryService,
 		ticketStockService:    ticketStockService,
-		publisher:             publisher,
 	}
 }
 
@@ -46,52 +42,58 @@ func (s *WaitingRoomService) WithTx(tx *gorm.DB) *WaitingRoomService {
 	return &WaitingRoomService{
 		txManager:             s.txManager,
 		repo:                  s.repo.WithTx(tx),
+		outboxRepo:            s.outboxRepo.WithTx(tx),
 		ticketCategoryService: s.ticketCategoryService.WithTx(tx),
 		ticketStockService:    s.ticketStockService.WithTx(tx),
-		publisher:             s.publisher,
 	}
 }
 
 func (s *WaitingRoomService) JoinQueue(ticketCategoryID int64) (*model.WaitingRoom, error) {
-	category, err := s.ticketCategoryService.FindByID(ticketCategoryID)
-	if err != nil {
-		return nil, err
-	}
-
 	queueToken, err := generateToken("queue")
 	if err != nil {
 		return nil, err
 	}
 
-	waitingRoom := model.WaitingRoom{
-		EventID:          category.EventID,
-		EventName:        category.Event.Name,
-		TicketCategoryID: category.ID,
-		QueueToken:       queueToken,
-		Status:           model.WaitingRoomStatusWaiting,
-	}
-	if err := s.repo.Create(&waitingRoom); err != nil {
-		return nil, err
-	}
+	var waitingRoom model.WaitingRoom
+	err = s.txManager.Transaction(func(tx *gorm.DB) error {
+		service := s.WithTx(tx)
 
-	if s.publisher == nil {
-		waitingRoom.Status = model.WaitingRoomStatusFailed
-		_ = s.repo.Save(&waitingRoom)
-		return &waitingRoom, nil
-	}
+		category, err := service.ticketCategoryService.FindByID(ticketCategoryID)
+		if err != nil {
+			return err
+		}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+		waitingRoom = model.WaitingRoom{
+			EventID:          category.EventID,
+			EventName:        category.Event.Name,
+			TicketCategoryID: category.ID,
+			QueueToken:       queueToken,
+			Status:           model.WaitingRoomStatusWaiting,
+		}
+		if err := service.repo.Create(&waitingRoom); err != nil {
+			return err
+		}
 
-	err = s.publisher.PublishJSON(ctx, rabbitmq.WaitingRoomQueue, rabbitmq.WaitingRoomMessage{
-		TicketCategoryID: waitingRoom.TicketCategoryID,
-		QueueToken:       waitingRoom.QueueToken,
-		CreatedAt:        time.Now(),
+		payload, err := json.Marshal(rabbitmq.WaitingRoomJoinedPayload{
+			TicketCategoryID: waitingRoom.TicketCategoryID,
+			QueueToken:       waitingRoom.QueueToken,
+			CreatedAt:        waitingRoom.CreatedAt,
+		})
+		if err != nil {
+			return err
+		}
+
+		return service.outboxRepo.Create(&model.OutboxEvent{
+			AggregateType: "waiting_room",
+			AggregateID:   waitingRoom.ID,
+			EventType:     rabbitmq.WaitingRoomJoinedEventType,
+			Payload:       payload,
+			Status:        model.OutboxStatusPending,
+			NextAttemptAt: time.Now(),
+		})
 	})
 	if err != nil {
-		waitingRoom.Status = model.WaitingRoomStatusFailed
-		_ = s.repo.Save(&waitingRoom)
-		return &waitingRoom, nil
+		return nil, err
 	}
 
 	return &waitingRoom, nil

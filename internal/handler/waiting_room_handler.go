@@ -27,14 +27,9 @@ func (h *Handler) joinQueue(ctx *gin.Context) {
 		return
 	}
 
-	message := "you are in queue"
-	if waitingRoom.Status == "failed" {
-		message = "queue request saved but not published"
-	}
-
 	ctx.JSON(http.StatusAccepted, dto.Response{
 		Success: true,
-		Message: message,
+		Message: "you are in queue",
 		Data:    mapper.ToJoinQueueResponse(waitingRoom),
 	})
 }

@@ -40,6 +40,12 @@ func resolveHTTPError(err error) (int, string) {
 		return http.StatusForbidden, err.Error()
 	case errors.Is(err, repository.ErrExpiredCheckout):
 		return http.StatusGone, err.Error()
+	case errors.Is(err, repository.ErrInvalidSignature):
+		return http.StatusUnauthorized, err.Error()
+	case errors.Is(err, repository.ErrInvalidPayment):
+		return http.StatusBadRequest, err.Error()
+	case errors.Is(err, repository.ErrPaymentConflict):
+		return http.StatusConflict, err.Error()
 	default:
 		return http.StatusInternalServerError, "internal server error"
 	}

@@ -21,3 +21,9 @@ func (r *BookingItemRepository) WithTx(tx *gorm.DB) *BookingItemRepository {
 func (r *BookingItemRepository) Create(item *model.BookingItem) error {
 	return r.db.Create(item).Error
 }
+
+func (r *BookingItemRepository) FindByBookingID(bookingID int64) ([]model.BookingItem, error) {
+	var items []model.BookingItem
+	err := r.db.Where("booking_id = ?", bookingID).Order("id ASC").Find(&items).Error
+	return items, err
+}

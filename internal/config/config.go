@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/joho/godotenv"
 )
@@ -14,6 +15,8 @@ type Config struct {
 	CORSAllowedOrigins []string
 	DB                 DBConfig
 	RabbitMQ           RabbitMQConfig
+	Payment            PaymentConfig
+	Accounting         AccountingConfig
 }
 
 type DBConfig struct {
@@ -27,6 +30,16 @@ type DBConfig struct {
 
 type RabbitMQConfig struct {
 	URL string
+}
+
+type PaymentConfig struct {
+	WebhookSecret string
+}
+
+type AccountingConfig struct {
+	APIURL   string
+	APIToken string
+	Timeout  time.Duration
 }
 
 func Load() Config {
@@ -46,6 +59,14 @@ func Load() Config {
 		},
 		RabbitMQ: RabbitMQConfig{
 			URL: getEnv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/"),
+		},
+		Payment: PaymentConfig{
+			WebhookSecret: getEnv("PAYMENT_WEBHOOK_SECRET", "change-me"),
+		},
+		Accounting: AccountingConfig{
+			APIURL:   getEnv("ACCOUNTING_API_URL", "http://localhost:8081/api/v1/payments"),
+			APIToken: getEnv("ACCOUNTING_API_TOKEN", ""),
+			Timeout:  getEnvDuration("ACCOUNTING_API_TIMEOUT", 10*time.Second),
 		},
 	}
 }
@@ -93,4 +114,13 @@ func getEnvList(key, fallback string) []string {
 		}
 	}
 	return values
+}
+
+func getEnvDuration(key string, fallback time.Duration) time.Duration {
+	value := getEnv(key, fallback.String())
+	duration, err := time.ParseDuration(value)
+	if err != nil || duration <= 0 {
+		return fallback
+	}
+	return duration
 }

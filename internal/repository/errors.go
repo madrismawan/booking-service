@@ -8,4 +8,7 @@ var (
 	ErrQueuePublish      = errors.New("failed to publish queue message")
 	ErrInvalidCheckout   = errors.New("invalid checkout token")
 	ErrExpiredCheckout   = errors.New("checkout token expired")
+	ErrInvalidSignature  = errors.New("invalid payment signature")
+	ErrInvalidPayment    = errors.New("invalid payment payload")
+	ErrPaymentConflict   = errors.New("payment cannot be processed")
 )

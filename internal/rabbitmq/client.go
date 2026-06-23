@@ -56,6 +56,27 @@ func (c *Client) DeclareQueue(name string) (amqp.Queue, error) {
 	return c.declareQueue(name)
 }
 
+func (c *Client) DeclareRetryQueue(
+	name string,
+	deadLetterRoutingKey string,
+	ttl time.Duration,
+) (amqp.Queue, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.ch.QueueDeclare(
+		name,
+		true,
+		false,
+		false,
+		false,
+		amqp.Table{
+			"x-message-ttl":             ttl.Milliseconds(),
+			"x-dead-letter-exchange":    "",
+			"x-dead-letter-routing-key": deadLetterRoutingKey,
+		},
+	)
+}
+
 func (c *Client) declareQueue(name string) (amqp.Queue, error) {
 	return c.ch.QueueDeclare(
 		name,
@@ -72,12 +93,40 @@ func (c *Client) PublishJSON(ctx context.Context, queueName string, payload any)
 	if err != nil {
 		return err
 	}
+	return c.publish(ctx, queueName, "application/json", body, true)
+}
 
+func (c *Client) PublishJSONDeclared(ctx context.Context, queueName string, payload any) error {
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	return c.publish(ctx, queueName, "application/json", body, false)
+}
+
+func (c *Client) PublishBytesDeclared(
+	ctx context.Context,
+	queueName string,
+	contentType string,
+	body []byte,
+) error {
+	return c.publish(ctx, queueName, contentType, body, false)
+}
+
+func (c *Client) publish(
+	ctx context.Context,
+	queueName string,
+	contentType string,
+	body []byte,
+	declare bool,
+) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if _, err := c.declareQueue(queueName); err != nil {
-		return err
+	if declare {
+		if _, err := c.declareQueue(queueName); err != nil {
+			return err
+		}
 	}
 
 	confirmation, err := c.ch.PublishWithDeferredConfirmWithContext(
@@ -87,7 +136,7 @@ func (c *Client) PublishJSON(ctx context.Context, queueName string, payload any)
 		false,
 		false,
 		amqp.Publishing{
-			ContentType:  "application/json",
+			ContentType:  contentType,
 			DeliveryMode: amqp.Persistent,
 			Timestamp:    time.Now(),
 			Body:         body,

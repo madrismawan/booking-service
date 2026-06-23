@@ -56,6 +56,41 @@ func (s *TicketStockService) ReserveForUpdate(ticketCategoryID int64, quantity i
 		return nil, err
 	}
 
+	if err := s.createStockChangedEvent(stock); err != nil {
+		return nil, err
+	}
+
+	return stock, nil
+}
+
+func (s *TicketStockService) MarkSoldForUpdate(
+	ticketCategoryID int64,
+	quantity int,
+) (*model.TicketStock, error) {
+	stock, err := s.repo.FindByTicketCategoryIDForUpdate(ticketCategoryID)
+	if err != nil {
+		return nil, err
+	}
+	if stock.ReservedQuantity < quantity {
+		return nil, repository.ErrPaymentConflict
+	}
+
+	stock.ReservedQuantity -= quantity
+	stock.SoldQuantity += quantity
+	stock.Version++
+	stock.UpdatedAt = time.Now()
+	if err := s.repo.Save(stock); err != nil {
+		return nil, err
+	}
+
+	if err := s.createStockChangedEvent(stock); err != nil {
+		return nil, err
+	}
+
+	return stock, nil
+}
+
+func (s *TicketStockService) createStockChangedEvent(stock *model.TicketStock) error {
 	payload, err := json.Marshal(rabbitmq.TicketStockChangedPayload{
 		EventType:        rabbitmq.TicketStockChangedEventType,
 		SchemaVersion:    rabbitmq.TicketStockChangedSchemaVersion,
@@ -65,7 +100,7 @@ func (s *TicketStockService) ReserveForUpdate(ticketCategoryID int64, quantity i
 		ChangedAt:        stock.UpdatedAt,
 	})
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	now := time.Now()
@@ -77,8 +112,7 @@ func (s *TicketStockService) ReserveForUpdate(ticketCategoryID int64, quantity i
 		Status:        model.OutboxStatusPending,
 		NextAttemptAt: now,
 	}); err != nil {
-		return nil, err
+		return err
 	}
-
-	return stock, nil
+	return nil
 }

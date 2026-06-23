@@ -17,6 +17,7 @@ func New(container *app.Container, allowedOrigins []string) *gin.Engine {
 		container.BookingService,
 		container.WaitingRoomService,
 		container.TicketStockService,
+		container.PaymentService,
 	).RegisterRoutes(api)
 
 	return router

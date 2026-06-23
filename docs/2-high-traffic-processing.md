@@ -4,7 +4,9 @@
 
 Masalah high traffic terjadi ketika banyak user masuk ke flow beli tiket di waktu yang sama.
 
-Solusi di aplikasi ini adalah membuat waiting room sederhana sebelum checkout. Waiting room hanya menampung request user, menyimpan queue ke database, lalu mengirim message ke RabbitMQ lewat publisher.
+Solusi di aplikasi ini adalah membuat waiting room sederhana sebelum checkout. Waiting
+room menampung request user, lalu menyimpan data antrean dan event outbox dalam satu
+transaksi database.
 
 Flow ini terjadi sebelum proses pada:
 
@@ -20,7 +22,7 @@ User masuk lewat endpoint:
 POST /api/v1/ticket-categories/:ticket_category_id/queue/join
 ```
 
-Service akan membuat data `waiting_rooms` dengan status `waiting`:
+Service membuka transaksi dan membuat data `waiting_rooms` dengan status `waiting`:
 
 ```go
 waitingRoom := model.WaitingRoom{
@@ -32,17 +34,51 @@ waitingRoom := model.WaitingRoom{
 }
 ```
 
-Setelah data tersimpan, service publish message ke RabbitMQ:
+Dalam transaksi yang sama, service membuat event outbox:
 
 ```go
-err = s.publisher.PublishJSON(ctx, rabbitmq.WaitingRoomQueue, rabbitmq.WaitingRoomMessage{
+payload, _ := json.Marshal(rabbitmq.WaitingRoomJoinedPayload{
 	TicketCategoryID: waitingRoom.TicketCategoryID,
 	QueueToken:       waitingRoom.QueueToken,
-	CreatedAt:        time.Now(),
+	CreatedAt:        waitingRoom.CreatedAt,
+})
+
+err = outboxRepo.Create(&model.OutboxEvent{
+	AggregateType: "waiting_room",
+	AggregateID:   waitingRoom.ID,
+	EventType:     rabbitmq.WaitingRoomJoinedEventType,
+	Payload:       payload,
+	Status:        model.OutboxStatusPending,
 })
 ```
 
-Publisher ini menjadi pemisah antara request user dan proses worker. Response ke user cukup berisi `queue_token`, supaya user bisa cek status queue tanpa menunggu proses checkout.
+Jika penyimpanan waiting room atau outbox gagal, seluruh transaksi rollback. Jika
+RabbitMQ sedang tidak tersedia setelah transaksi commit, request tetap mendapat
+`202 Accepted` dengan status `waiting` karena event sudah aman tersimpan dan akan
+dicoba kembali oleh outbox worker.
+
+API process tidak melakukan koneksi atau publish langsung ke RabbitMQ.
+
+## Publish Outbox
+
+Outbox worker mengambil event `waiting_room.joined` dan mengirim message ke:
+
+```text
+waiting_room.queue
+```
+
+Message yang diterima waiting-room worker tetap berbentuk:
+
+```json
+{
+  "ticket_category_id": 10,
+  "queue_token": "queue_abc",
+  "created_at": "2026-06-24T10:00:00Z"
+}
+```
+
+Outbox worker menandai event `sent` setelah RabbitMQ memberi publisher confirmation.
+Jika publish gagal, event kembali `pending` dan dijadwalkan untuk retry.
 
 ## Proses Worker
 
@@ -85,8 +121,8 @@ Ringkasnya:
 ```text
 Waiting room:
 - menampung request
-- menyimpan queue
-- publish message ke RabbitMQ
+- menyimpan queue dan outbox secara atomik
+- outbox worker publish message ke RabbitMQ
 - worker menentukan ready atau failed
 - membuat checkout_token jika user boleh checkout
 
@@ -105,8 +141,12 @@ Checkout:
 
 2. Perlu worker
 
-   Jika worker mati, request tetap tersimpan, tapi status bisa tertahan di `waiting`.
+   Jika outbox worker atau waiting-room worker mati, request tetap tersimpan, tetapi
+   status bisa tertahan di `waiting` sampai worker kembali berjalan.
 
 3. Ada kemungkinan gagal setelah masuk queue
 
    Semua request bisa ditampung, tapi tidak semuanya pasti mendapat checkout token. Jika stock tidak cukup, status menjadi `failed`.
+
+Status `failed` dipakai untuk kegagalan bisnis saat worker memeriksa stok. Kegagalan
+publish RabbitMQ tidak mengubah waiting room menjadi `failed`.
