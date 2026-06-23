@@ -47,6 +47,7 @@ func NewContainer(db *gorm.DB, publisher Publisher) *Container {
 		txManager,
 		waitingRoomRepo,
 		ticketCategoryService,
+		ticketStockService,
 		publisher,
 	)
 

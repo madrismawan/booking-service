@@ -92,6 +92,20 @@ func (w *WaitingRoomWorker) handleDelivery(body []byte) deliveryAction {
 		return deliveryAck
 	}
 
+	if waitingRoom.Status == "failed" {
+		failedReason := ""
+		if waitingRoom.FailedReason != nil {
+			failedReason = *waitingRoom.FailedReason
+		}
+		w.logger.Printf(
+			"waiting room failed: queue_token=%s ticket_category_id=%d reason=%s",
+			waitingRoom.QueueToken,
+			waitingRoom.TicketCategoryID,
+			failedReason,
+		)
+		return deliveryAck
+	}
+
 	w.logger.Printf(
 		"waiting room ready: queue_token=%s ticket_category_id=%d expires_at=%s",
 		waitingRoom.QueueToken,

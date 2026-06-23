@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"time"
 
 	"booking-service/internal/model"
@@ -17,6 +18,7 @@ type WaitingRoomService struct {
 	txManager             *repository.TransactionManager
 	repo                  *repository.WaitingRoomRepository
 	ticketCategoryService *TicketCategoryService
+	ticketStockService    *TicketStockService
 	publisher             waitingRoomPublisher
 }
 
@@ -28,12 +30,14 @@ func NewWaitingRoomService(
 	txManager *repository.TransactionManager,
 	repo *repository.WaitingRoomRepository,
 	ticketCategoryService *TicketCategoryService,
+	ticketStockService *TicketStockService,
 	publisher waitingRoomPublisher,
 ) *WaitingRoomService {
 	return &WaitingRoomService{
 		txManager:             txManager,
 		repo:                  repo,
 		ticketCategoryService: ticketCategoryService,
+		ticketStockService:    ticketStockService,
 		publisher:             publisher,
 	}
 }
@@ -43,6 +47,7 @@ func (s *WaitingRoomService) WithTx(tx *gorm.DB) *WaitingRoomService {
 		txManager:             s.txManager,
 		repo:                  s.repo.WithTx(tx),
 		ticketCategoryService: s.ticketCategoryService.WithTx(tx),
+		ticketStockService:    s.ticketStockService.WithTx(tx),
 		publisher:             s.publisher,
 	}
 }
@@ -124,6 +129,50 @@ func (s *WaitingRoomService) MarkReady(queueToken string, ttl time.Duration) (*m
 
 		if record.Status != model.WaitingRoomStatusWaiting {
 			waitingRoom = *record
+			return nil
+		}
+
+		stock, err := service.ticketStockService.FindByTicketCategoryID(record.TicketCategoryID)
+		if err != nil {
+			if errors.Is(err, repository.ErrNotFound) {
+				reason := "ticket stock not found"
+				record.Status = model.WaitingRoomStatusFailed
+				record.FailedReason = &reason
+				if err := service.repo.Save(record); err != nil {
+					return err
+				}
+				waitingRoom = *record
+				processed = true
+				return nil
+			}
+			return err
+		}
+
+		if stock.AvailableQuantity <= 0 {
+			reason := "ticket stock is sold out"
+			record.Status = model.WaitingRoomStatusFailed
+			record.FailedReason = &reason
+			if err := service.repo.Save(record); err != nil {
+				return err
+			}
+			waitingRoom = *record
+			processed = true
+			return nil
+		}
+
+		activeCheckoutCount, err := service.repo.CountActiveCheckoutByTicketCategoryID(record.TicketCategoryID)
+		if err != nil {
+			return err
+		}
+		if activeCheckoutCount >= int64(stock.AvailableQuantity) {
+			reason := "checkout queue exceeds available ticket stock"
+			record.Status = model.WaitingRoomStatusFailed
+			record.FailedReason = &reason
+			if err := service.repo.Save(record); err != nil {
+				return err
+			}
+			waitingRoom = *record
+			processed = true
 			return nil
 		}
 

@@ -21,6 +21,15 @@ func (r *TicketStockRepository) WithTx(tx *gorm.DB) *TicketStockRepository {
 	return &TicketStockRepository{db: tx}
 }
 
+func (r *TicketStockRepository) FindByTicketCategoryID(ticketCategoryID int64) (*model.TicketStock, error) {
+	var stock model.TicketStock
+	err := r.db.Where("ticket_category_id = ?", ticketCategoryID).First(&stock).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, ErrNotFound
+	}
+	return &stock, err
+}
+
 func (r *TicketStockRepository) FindByTicketCategoryIDForUpdate(ticketCategoryID int64) (*model.TicketStock, error) {
 	var stock model.TicketStock
 	err := r.db.Clauses(clause.Locking{Strength: "UPDATE"}).

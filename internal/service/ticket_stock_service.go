@@ -19,6 +19,14 @@ func (s *TicketStockService) WithTx(tx *gorm.DB) *TicketStockService {
 	return &TicketStockService{repo: s.repo.WithTx(tx)}
 }
 
+func (s *TicketStockService) FindByTicketCategoryID(ticketCategoryID int64) (*model.TicketStock, error) {
+	return s.repo.FindByTicketCategoryID(ticketCategoryID)
+}
+
+func (s *TicketStockService) FindByTicketCategoryIDForUpdate(ticketCategoryID int64) (*model.TicketStock, error) {
+	return s.repo.FindByTicketCategoryIDForUpdate(ticketCategoryID)
+}
+
 func (s *TicketStockService) ReserveForUpdate(ticketCategoryID int64, quantity int) (*model.TicketStock, error) {
 	stock, err := s.repo.FindByTicketCategoryIDForUpdate(ticketCategoryID)
 	if err != nil {

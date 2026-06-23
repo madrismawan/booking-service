@@ -56,6 +56,19 @@ func (r *WaitingRoomRepository) FindByCheckoutTokenForUpdate(checkoutToken strin
 	return &waitingRoom, err
 }
 
+func (r *WaitingRoomRepository) CountActiveCheckoutByTicketCategoryID(ticketCategoryID int64) (int64, error) {
+	var count int64
+	err := r.db.Model(&model.WaitingRoom{}).
+		Where("ticket_category_id = ?", ticketCategoryID).
+		Where("status IN ?", []string{
+			model.WaitingRoomStatusReady,
+			model.WaitingRoomStatusCheckoutStarted,
+		}).
+		Where("expired_at IS NOT NULL AND expired_at > NOW()").
+		Count(&count).Error
+	return count, err
+}
+
 func (r *WaitingRoomRepository) Save(waitingRoom *model.WaitingRoom) error {
 	return r.db.Save(waitingRoom).Error
 }
