@@ -16,6 +16,8 @@ type Publisher interface {
 type Container struct {
 	BookingService     *service.BookingService
 	WaitingRoomService *service.WaitingRoomService
+	TicketStockService *service.TicketStockService
+	OutboxEventRepo    *repository.OutboxEventRepository
 }
 
 func NewContainer(db *gorm.DB, publisher Publisher) *Container {
@@ -23,13 +25,14 @@ func NewContainer(db *gorm.DB, publisher Publisher) *Container {
 
 	ticketCategoryRepo := repository.NewTicketCategoryRepository(db)
 	ticketStockRepo := repository.NewTicketStockRepository(db)
+	outboxEventRepo := repository.NewOutboxEventRepository(db)
 	bookingRepo := repository.NewBookingRepository(db)
 	bookingItemRepo := repository.NewBookingItemRepository(db)
 	guestRepo := repository.NewGuestRepository(db)
 	waitingRoomRepo := repository.NewWaitingRoomRepository(db)
 
 	ticketCategoryService := service.NewTicketCategoryService(ticketCategoryRepo)
-	ticketStockService := service.NewTicketStockService(ticketStockRepo)
+	ticketStockService := service.NewTicketStockService(ticketStockRepo, outboxEventRepo)
 	guestService := service.NewGuestService(guestRepo)
 	bookingItemService := service.NewBookingItemService(bookingItemRepo)
 
@@ -54,5 +57,7 @@ func NewContainer(db *gorm.DB, publisher Publisher) *Container {
 	return &Container{
 		BookingService:     bookingService,
 		WaitingRoomService: waitingRoomService,
+		TicketStockService: ticketStockService,
+		OutboxEventRepo:    outboxEventRepo,
 	}
 }

@@ -9,6 +9,7 @@ type TicketStock struct {
 	AvailableQuantity int
 	ReservedQuantity  int
 	SoldQuantity      int
+	Version           int64
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
 }

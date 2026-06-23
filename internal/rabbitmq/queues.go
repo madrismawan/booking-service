@@ -8,6 +8,7 @@ import (
 const (
 	WaitingRoomQueue                = "waiting_room.queue"
 	AccountingPaymentSucceededQueue = "accounting.payment_succeeded.queue"
+	TicketStockChangedQueue         = "ticket_stock.changed.queue"
 )
 
 func WaitingRoomEventQueue(eventSlug string) string {

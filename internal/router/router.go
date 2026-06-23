@@ -13,7 +13,11 @@ func New(container *app.Container, allowedOrigins []string) *gin.Engine {
 	router.Use(gin.Logger(), gin.Recovery(), middleware.CORS(allowedOrigins), middleware.Error())
 
 	api := router.Group("/api/v1")
-	handler.New(container.BookingService, container.WaitingRoomService).RegisterRoutes(api)
+	handler.New(
+		container.BookingService,
+		container.WaitingRoomService,
+		container.TicketStockService,
+	).RegisterRoutes(api)
 
 	return router
 }

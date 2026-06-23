@@ -3,6 +3,8 @@ package rabbitmq
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"sync"
 	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -11,6 +13,7 @@ import (
 type Client struct {
 	conn *amqp.Connection
 	ch   *amqp.Channel
+	mu   sync.Mutex
 }
 
 func NewClient(url string) (*Client, error) {
@@ -21,6 +24,12 @@ func NewClient(url string) (*Client, error) {
 
 	ch, err := conn.Channel()
 	if err != nil {
+		_ = conn.Close()
+		return nil, err
+	}
+
+	if err := ch.Confirm(false); err != nil {
+		_ = ch.Close()
 		_ = conn.Close()
 		return nil, err
 	}
@@ -42,6 +51,12 @@ func (c *Client) Close() error {
 }
 
 func (c *Client) DeclareQueue(name string) (amqp.Queue, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.declareQueue(name)
+}
+
+func (c *Client) declareQueue(name string) (amqp.Queue, error) {
 	return c.ch.QueueDeclare(
 		name,
 		true,
@@ -58,11 +73,14 @@ func (c *Client) PublishJSON(ctx context.Context, queueName string, payload any)
 		return err
 	}
 
-	if _, err := c.DeclareQueue(queueName); err != nil {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if _, err := c.declareQueue(queueName); err != nil {
 		return err
 	}
 
-	return c.ch.PublishWithContext(
+	confirmation, err := c.ch.PublishWithDeferredConfirmWithContext(
 		ctx,
 		"",
 		queueName,
@@ -75,10 +93,25 @@ func (c *Client) PublishJSON(ctx context.Context, queueName string, payload any)
 			Body:         body,
 		},
 	)
+	if err != nil {
+		return err
+	}
+
+	acked, err := confirmation.WaitContext(ctx)
+	if err != nil {
+		return err
+	}
+	if !acked {
+		return errors.New("rabbitmq broker rejected published message")
+	}
+	return nil
 }
 
 func (c *Client) Consume(queueName, consumerName string) (<-chan amqp.Delivery, error) {
-	if _, err := c.DeclareQueue(queueName); err != nil {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if _, err := c.declareQueue(queueName); err != nil {
 		return nil, err
 	}
 

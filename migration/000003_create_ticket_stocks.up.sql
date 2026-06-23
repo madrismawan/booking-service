@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS ticket_stocks (
   available_quantity INTEGER NOT NULL,
   reserved_quantity INTEGER NOT NULL DEFAULT 0,
   sold_quantity INTEGER NOT NULL DEFAULT 0,
+  version BIGINT NOT NULL DEFAULT 1,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT ticket_stocks_quantity_check CHECK (

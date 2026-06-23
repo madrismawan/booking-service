@@ -55,6 +55,7 @@
 | `available_quantity` | `INTEGER`     | Jumlah tiket yang tersedia untuk booking.        |
 | `reserved_quantity`  | `INTEGER`     | Jumlah tiket yang sedang direservasi.            |
 | `sold_quantity`      | `INTEGER`     | Jumlah tiket yang sudah terjual.                 |
+| `version`            | `BIGINT`      | Versi monotonik untuk sinkronisasi stok.         |
 | `created_at`         | `TIMESTAMP`   | Timestamp column.                                |
 | `updated_at`         | `TIMESTAMP`   | Timestamp column.                                |
 

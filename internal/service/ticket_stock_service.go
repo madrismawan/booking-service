@@ -1,22 +1,34 @@
 package service
 
 import (
+	"encoding/json"
+	"fmt"
+	"time"
+
 	"booking-service/internal/model"
+	"booking-service/internal/rabbitmq"
 	"booking-service/internal/repository"
 
 	"gorm.io/gorm"
 )
 
 type TicketStockService struct {
-	repo *repository.TicketStockRepository
+	repo       *repository.TicketStockRepository
+	outboxRepo *repository.OutboxEventRepository
 }
 
-func NewTicketStockService(repo *repository.TicketStockRepository) *TicketStockService {
-	return &TicketStockService{repo: repo}
+func NewTicketStockService(
+	repo *repository.TicketStockRepository,
+	outboxRepo *repository.OutboxEventRepository,
+) *TicketStockService {
+	return &TicketStockService{repo: repo, outboxRepo: outboxRepo}
 }
 
 func (s *TicketStockService) WithTx(tx *gorm.DB) *TicketStockService {
-	return &TicketStockService{repo: s.repo.WithTx(tx)}
+	return &TicketStockService{
+		repo:       s.repo.WithTx(tx),
+		outboxRepo: s.outboxRepo.WithTx(tx),
+	}
 }
 
 func (s *TicketStockService) FindByTicketCategoryID(ticketCategoryID int64) (*model.TicketStock, error) {
@@ -38,7 +50,33 @@ func (s *TicketStockService) ReserveForUpdate(ticketCategoryID int64, quantity i
 
 	stock.AvailableQuantity -= quantity
 	stock.ReservedQuantity += quantity
+	stock.Version++
+	stock.UpdatedAt = time.Now()
 	if err := s.repo.Save(stock); err != nil {
+		return nil, err
+	}
+
+	payload, err := json.Marshal(rabbitmq.TicketStockChangedPayload{
+		EventType:        rabbitmq.TicketStockChangedEventType,
+		SchemaVersion:    rabbitmq.TicketStockChangedSchemaVersion,
+		TicketCategoryID: stock.TicketCategoryID,
+		StockVersion:     stock.Version,
+		SnapshotURL:      fmt.Sprintf("/api/v1/ticket-categories/%d/stock", stock.TicketCategoryID),
+		ChangedAt:        stock.UpdatedAt,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	now := time.Now()
+	if err := s.outboxRepo.Create(&model.OutboxEvent{
+		AggregateType: "ticket_stock",
+		AggregateID:   stock.ID,
+		EventType:     rabbitmq.TicketStockChangedEventType,
+		Payload:       payload,
+		Status:        model.OutboxStatusPending,
+		NextAttemptAt: now,
+	}); err != nil {
 		return nil, err
 	}
 

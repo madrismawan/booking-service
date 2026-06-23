@@ -22,21 +22,53 @@ func main() {
 		log.Fatalf("connect database: %v", err)
 	}
 
-	mq, err := rabbitmq.NewClient(cfg.RabbitMQ.URL)
+	consumerMQ, err := rabbitmq.NewClient(cfg.RabbitMQ.URL)
 	if err != nil {
-		log.Fatalf("connect rabbitmq: %v", err)
+		log.Fatalf("connect rabbitmq consumer: %v", err)
 	}
-	defer mq.Close()
+	defer consumerMQ.Close()
+
+	publisherMQ, err := rabbitmq.NewClient(cfg.RabbitMQ.URL)
+	if err != nil {
+		log.Fatalf("connect rabbitmq publisher: %v", err)
+	}
+	defer publisherMQ.Close()
 
 	container := app.NewContainer(db, nil)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	waitingRoomWorker := worker.NewWaitingRoomWorker(mq, container.WaitingRoomService, log.Default())
-	if err := waitingRoomWorker.Start(ctx); err != nil {
-		log.Fatalf("run waiting room worker: %v", err)
+	waitingRoomWorker := worker.NewWaitingRoomWorker(
+		consumerMQ,
+		container.WaitingRoomService,
+		log.Default(),
+	)
+	outboxWorker := worker.NewOutboxWorker(
+		container.OutboxEventRepo,
+		publisherMQ,
+		log.Default(),
+	)
+
+	errCh := make(chan error, 2)
+	go func() {
+		errCh <- waitingRoomWorker.Start(ctx)
+	}()
+	go func() {
+		errCh <- outboxWorker.Start(ctx)
+	}()
+
+	var workerErr error
+	for completed := 0; completed < 2; completed++ {
+		err := <-errCh
+		if err != nil && workerErr == nil {
+			workerErr = err
+			stop()
+		}
 	}
 
-	log.Println("waiting room worker shutting down")
+	if workerErr != nil {
+		log.Fatalf("run worker: %v", workerErr)
+	}
+	log.Println("workers shutting down")
 }
