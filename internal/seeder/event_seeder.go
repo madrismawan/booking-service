@@ -1,7 +1,6 @@
 package seeder
 
 import (
-	"errors"
 	"time"
 
 	"booking-service/internal/model"
@@ -20,17 +19,9 @@ func seedEvent(tx *gorm.DB) (model.Event, error) {
 		Status:       "published",
 	}
 
-	var existingEvent model.Event
-	err := tx.Where("slug = ?", event.Slug).First(&existingEvent).Error
-	switch {
-	case err == nil:
-		return existingEvent, nil
-	case errors.Is(err, gorm.ErrRecordNotFound):
-		if err := tx.Create(&event).Error; err != nil {
-			return model.Event{}, err
-		}
-		return event, nil
-	default:
+	if err := tx.Where("slug = ?", event.Slug).Attrs(event).FirstOrCreate(&event).Error; err != nil {
 		return model.Event{}, err
 	}
+
+	return event, nil
 }

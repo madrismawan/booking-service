@@ -1,10 +1,11 @@
 package config
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/joho/godotenv"
 )
 
 type Config struct {
@@ -12,6 +13,7 @@ type Config struct {
 	AppEnv             string
 	CORSAllowedOrigins []string
 	DB                 DBConfig
+	RabbitMQ           RabbitMQConfig
 }
 
 type DBConfig struct {
@@ -23,8 +25,12 @@ type DBConfig struct {
 	SSLMode  string
 }
 
+type RabbitMQConfig struct {
+	URL string
+}
+
 func Load() Config {
-	loadDotEnv(".env")
+	_ = godotenv.Load()
 
 	return Config{
 		AppPort:            getEnv("APP_PORT", "8080"),
@@ -37,6 +43,9 @@ func Load() Config {
 			Password: getEnv("DB_PASSWORD", "postgres"),
 			Name:     getEnv("DB_NAME", "booking_db"),
 			SSLMode:  getEnv("DB_SSLMODE", "disable"),
+		},
+		RabbitMQ: RabbitMQConfig{
+			URL: getEnv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/"),
 		},
 	}
 }
@@ -84,31 +93,4 @@ func getEnvList(key, fallback string) []string {
 		}
 	}
 	return values
-}
-
-func loadDotEnv(path string) {
-	file, err := os.Open(path)
-	if err != nil {
-		return
-	}
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-
-		key, value, ok := strings.Cut(line, "=")
-		if !ok {
-			continue
-		}
-
-		key = strings.TrimSpace(key)
-		value = strings.Trim(strings.TrimSpace(value), `"'`)
-		if key != "" && os.Getenv(key) == "" {
-			_ = os.Setenv(key, value)
-		}
-	}
 }

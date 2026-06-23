@@ -34,6 +34,12 @@ func resolveHTTPError(err error) (int, string) {
 		return http.StatusNotFound, err.Error()
 	case errors.Is(err, repository.ErrInsufficientStock):
 		return http.StatusConflict, err.Error()
+	case errors.Is(err, repository.ErrQueuePublish):
+		return http.StatusServiceUnavailable, "queue service unavailable"
+	case errors.Is(err, repository.ErrInvalidCheckout):
+		return http.StatusForbidden, err.Error()
+	case errors.Is(err, repository.ErrExpiredCheckout):
+		return http.StatusGone, err.Error()
 	default:
 		return http.StatusInternalServerError, "internal server error"
 	}

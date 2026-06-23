@@ -19,6 +19,10 @@ func (s *TicketCategoryService) WithTx(tx *gorm.DB) *TicketCategoryService {
 	return &TicketCategoryService{repo: s.repo.WithTx(tx)}
 }
 
+func (s *TicketCategoryService) FindByID(id int64) (*model.TicketCategory, error) {
+	return s.repo.FindByID(id)
+}
+
 func (s *TicketCategoryService) FindFirstByEventID(eventID int64) (*model.TicketCategory, error) {
 	return s.repo.FindFirstByEventID(eventID)
 }

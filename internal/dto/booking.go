@@ -2,15 +2,10 @@ package dto
 
 import "time"
 
-type Response struct {
-	Success bool        `json:"success"`
-	Message string      `json:"message"`
-	Data    interface{} `json:"data,omitempty"`
-	Errors  interface{} `json:"errors,omitempty"`
-}
-
 type CreateBookingRequest struct {
-	Quantity int `json:"quantity" binding:"required,min=1"`
+	CheckoutToken    string `json:"checkout_token" binding:"required"`
+	TicketCategoryID int64  `json:"ticket_category_id" binding:"required,min=1"`
+	Quantity         int    `json:"quantity" binding:"required,min=1"`
 }
 
 type CreateBookingResponse struct {

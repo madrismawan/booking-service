@@ -30,22 +30,40 @@ func main() {
 		log.Fatalf("unsupported migration direction %q, supported directions: up, fresh", *direction)
 	}
 
-	m, err := migrate.New("file://"+*path, cfg.DB.URL())
-	if err != nil {
-		log.Fatalf("create migration: %v", err)
-	}
-	defer m.Close()
-
 	switch *direction {
 	case "up":
+		m, err := newMigrate(*path, cfg.DB.URL())
+		if err != nil {
+			log.Fatalf("create migration: %v", err)
+		}
+		defer m.Close()
+
 		if err := migrateUp(m); err != nil {
 			log.Fatalf("run migration: %v", err)
 		}
 		log.Println("migration up completed")
 	case "fresh":
-		if err := m.Drop(); err != nil {
-			log.Fatalf("drop database objects: %v", err)
+		m, err := newMigrate(*path, cfg.DB.URL())
+		if err != nil {
+			log.Fatalf("create migration: %v", err)
 		}
+
+		if err := m.Drop(); err != nil {
+			if !isMissingSchemaMigrations(err) {
+				log.Fatalf("drop database objects: %v", err)
+			}
+			log.Printf("skip drop step: %v", err)
+		}
+		if sourceErr, dbErr := m.Close(); sourceErr != nil || dbErr != nil {
+			log.Fatalf("close drop migration: source=%v database=%v", sourceErr, dbErr)
+		}
+
+		m, err = newMigrate(*path, cfg.DB.URL())
+		if err != nil {
+			log.Fatalf("create fresh migration: %v", err)
+		}
+		defer m.Close()
+
 		if err := migrateUp(m); err != nil {
 			log.Fatalf("run fresh migration: %v", err)
 		}
@@ -53,6 +71,10 @@ func main() {
 	default:
 		log.Fatalf("unsupported migration direction %q, supported directions: up, fresh", *direction)
 	}
+}
+
+func newMigrate(path, databaseURL string) (*migrate.Migrate, error) {
+	return migrate.New("file://"+path, databaseURL)
 }
 
 func migrateUp(m *migrate.Migrate) error {
@@ -64,4 +86,8 @@ func migrateUp(m *migrate.Migrate) error {
 
 func isFreshAllowed(appEnv string, force bool) bool {
 	return force || strings.EqualFold(strings.TrimSpace(appEnv), "development")
+}
+
+func isMissingSchemaMigrations(err error) bool {
+	return strings.Contains(err.Error(), `relation "public.schema_migrations" does not exist`)
 }

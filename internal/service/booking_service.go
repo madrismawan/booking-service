@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -14,52 +15,69 @@ import (
 type BookingService struct {
 	txManager             *repository.TransactionManager
 	repo                  *repository.BookingRepository
-	eventService          *EventService
 	ticketCategoryService *TicketCategoryService
 	ticketStockService    *TicketStockService
 	guestService          *GuestService
 	bookingItemService    *BookingItemService
+	waitingRoomRepo       *repository.WaitingRoomRepository
 }
 
 func NewBookingService(
 	txManager *repository.TransactionManager,
 	repo *repository.BookingRepository,
-	eventService *EventService,
 	ticketCategoryService *TicketCategoryService,
 	ticketStockService *TicketStockService,
 	guestService *GuestService,
 	bookingItemService *BookingItemService,
+	waitingRoomRepo *repository.WaitingRoomRepository,
 ) *BookingService {
 	return &BookingService{
 		txManager:             txManager,
 		repo:                  repo,
-		eventService:          eventService,
 		ticketCategoryService: ticketCategoryService,
 		ticketStockService:    ticketStockService,
 		guestService:          guestService,
 		bookingItemService:    bookingItemService,
+		waitingRoomRepo:       waitingRoomRepo,
 	}
 }
 
-func (s *BookingService) CreateBooking(eventSlug string, req dto.CreateBookingRequest) (*model.Booking, error) {
+func (s *BookingService) CreateBooking(req dto.CreateBookingRequest) (*model.Booking, error) {
 	var booking model.Booking
 	var bookingItem model.BookingItem
 
 	err := s.txManager.Transaction(func(tx *gorm.DB) error {
 		repo := s.repo.WithTx(tx)
-		eventService := s.eventService.WithTx(tx)
 		ticketCategoryService := s.ticketCategoryService.WithTx(tx)
 		ticketStockService := s.ticketStockService.WithTx(tx)
 		guestService := s.guestService.WithTx(tx)
 		bookingItemService := s.bookingItemService.WithTx(tx)
+		waitingRoomRepo := s.waitingRoomRepo.WithTx(tx)
 
-		event, err := eventService.FindBySlug(eventSlug)
+		category, err := ticketCategoryService.FindByID(req.TicketCategoryID)
 		if err != nil {
 			return err
 		}
+		event := category.Event
 
-		category, err := ticketCategoryService.FindFirstByEventID(event.ID)
+		var waitingRoom *model.WaitingRoom
+		waitingRoom, err = waitingRoomRepo.FindByCheckoutTokenForUpdate(req.CheckoutToken)
 		if err != nil {
+			if errors.Is(err, repository.ErrNotFound) {
+				return repository.ErrInvalidCheckout
+			}
+			return err
+		}
+		if waitingRoom.TicketCategoryID != category.ID || waitingRoom.Status != model.WaitingRoomStatusReady {
+			return repository.ErrInvalidCheckout
+		}
+		if waitingRoom.ExpiredAt == nil || time.Now().After(*waitingRoom.ExpiredAt) {
+			waitingRoom.Status = model.WaitingRoomStatusExpired
+			_ = waitingRoomRepo.Save(waitingRoom)
+			return repository.ErrExpiredCheckout
+		}
+		waitingRoom.Status = model.WaitingRoomStatusCheckoutStarted
+		if err := waitingRoomRepo.Save(waitingRoom); err != nil {
 			return err
 		}
 
@@ -114,6 +132,12 @@ func (s *BookingService) CreateBooking(eventSlug string, req dto.CreateBookingRe
 			return err
 		}
 		booking.Items = []model.BookingItem{bookingItem}
+
+		waitingRoom.BookingID = &booking.ID
+		waitingRoom.Status = model.WaitingRoomStatusCompleted
+		if err := waitingRoomRepo.Save(waitingRoom); err != nil {
+			return err
+		}
 
 		return nil
 	})

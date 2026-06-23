@@ -20,7 +20,7 @@ func (h *Handler) createBooking(ctx *gin.Context) {
 		return
 	}
 
-	booking, err := h.bookingService.CreateBooking(ctx.Param("slug"), req)
+	booking, err := h.bookingService.CreateBooking(req)
 	if err != nil {
 		_ = ctx.Error(err)
 		return

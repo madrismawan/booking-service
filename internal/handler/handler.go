@@ -7,13 +7,19 @@ import (
 )
 
 type Handler struct {
-	bookingService *service.BookingService
+	bookingService     *service.BookingService
+	waitingRoomService *service.WaitingRoomService
 }
 
-func New(bookingService *service.BookingService) *Handler {
-	return &Handler{bookingService: bookingService}
+func New(bookingService *service.BookingService, waitingRoomService *service.WaitingRoomService) *Handler {
+	return &Handler{
+		bookingService:     bookingService,
+		waitingRoomService: waitingRoomService,
+	}
 }
 
 func (h *Handler) RegisterRoutes(api *gin.RouterGroup) {
-	api.POST("/booking/:slug", h.createBooking)
+	api.POST("/ticket-categories/:ticket_category_id/queue/join", h.joinQueue)
+	api.GET("/queue/:queue_token/status", h.getQueueStatus)
+	api.POST("/booking", h.createBooking)
 }

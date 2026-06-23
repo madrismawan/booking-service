@@ -11,11 +11,11 @@ func Run(db *gorm.DB) error {
 			return err
 		}
 
-		category, err := seedTicketCategory(tx, event)
+		categories, err := seedTicketCategories(tx, event)
 		if err != nil {
 			return err
 		}
 
-		return seedTicketStock(tx, category)
+		return seedTicketStocks(tx, categories)
 	})
 }
