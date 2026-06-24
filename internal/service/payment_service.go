@@ -2,6 +2,7 @@ package service
 
 import (
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -80,7 +81,7 @@ func (s *PaymentService) ProcessWebhook(
 
 	var result PaymentWebhookResult
 	err := s.txManager.Transaction(func(tx *gorm.DB) error {
-		lockKey := req.Provider + "|" + req.ProviderEventID
+		lockKey := req.Provider + "|ref|" + req.RefID
 		if err := tx.Exec(
 			"SELECT pg_advisory_xact_lock(hashtextextended(?, 0))",
 			lockKey,
@@ -89,9 +90,9 @@ func (s *PaymentService) ProcessWebhook(
 		}
 
 		paymentRepo := s.paymentRepo.WithTx(tx)
-		existing, err := paymentRepo.FindByProviderEventID(req.Provider, req.ProviderEventID)
+		existing, err := paymentRepo.FindByRefID(req.Provider, req.RefID)
 		if err == nil {
-			booking, bookingErr := s.bookingRepo.WithTx(tx).FindByIDForUpdate(existing.BookingID)
+			booking, bookingErr := s.bookingRepo.WithTx(tx).FindByID(existing.BookingID)
 			if bookingErr != nil {
 				return bookingErr
 			}
@@ -117,17 +118,21 @@ func (s *PaymentService) ProcessWebhook(
 			return repository.ErrPaymentConflict
 		}
 
+		transactionCode, err := newPaymentTransactionCode()
+		if err != nil {
+			return err
+		}
+
 		payment := &model.PaymentTransaction{
-			BookingID:             booking.ID,
-			TransactionCode:       fmt.Sprintf("PAY-%d", time.Now().UnixNano()),
-			Provider:              req.Provider,
-			ProviderTransactionID: req.ProviderTransactionID,
-			ProviderEventID:       req.ProviderEventID,
-			PaymentMethod:         req.PaymentMethod,
-			Status:                "paid",
-			Amount:                req.Amount,
-			Payload:               append(json.RawMessage(nil), rawPayload...),
-			PaidAt:                &req.PaidAt,
+			BookingID:       booking.ID,
+			TransactionCode: transactionCode,
+			Provider:        req.Provider,
+			RefID:           req.RefID,
+			PaymentMethod:   req.PaymentMethod,
+			Status:          "paid",
+			Amount:          req.Amount,
+			Payload:         append(json.RawMessage(nil), rawPayload...),
+			PaidAt:          &req.PaidAt,
 		}
 		if err := paymentRepo.Create(payment); err != nil {
 			return err
@@ -186,4 +191,12 @@ func (s *PaymentService) ProcessWebhook(
 		return nil, err
 	}
 	return &result, nil
+}
+
+func newPaymentTransactionCode() (string, error) {
+	var random [12]byte
+	if _, err := rand.Read(random[:]); err != nil {
+		return "", fmt.Errorf("generate payment transaction code: %w", err)
+	}
+	return "PAY-" + strings.ToUpper(hex.EncodeToString(random[:])), nil
 }

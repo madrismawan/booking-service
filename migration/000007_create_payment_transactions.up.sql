@@ -1,10 +1,9 @@
 CREATE TABLE IF NOT EXISTS payment_transactions (
   id BIGSERIAL PRIMARY KEY,
   booking_id BIGINT NOT NULL REFERENCES bookings(id),
-  transaction_code VARCHAR(80),
+  transaction_code VARCHAR(80) NOT NULL,
   provider VARCHAR(80) NOT NULL,
-  provider_transaction_id VARCHAR(120),
-  provider_event_id VARCHAR(120),
+  ref_id VARCHAR(120) NOT NULL,
   payment_method VARCHAR(80),
   status VARCHAR(50) NOT NULL,
   amount BIGINT NOT NULL,
@@ -16,6 +15,8 @@ CREATE TABLE IF NOT EXISTS payment_transactions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_payment_transactions_booking_id ON payment_transactions (booking_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_payment_transactions_provider_event_id
-  ON payment_transactions (provider, provider_event_id)
-  WHERE provider_event_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_payment_transactions_transaction_code
+  ON payment_transactions (transaction_code);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_payment_transactions_provider_ref_id
+  ON payment_transactions (provider, ref_id);

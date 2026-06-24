@@ -24,13 +24,13 @@ func (r *PaymentTransactionRepository) Create(payment *model.PaymentTransaction)
 	return r.db.Create(payment).Error
 }
 
-func (r *PaymentTransactionRepository) FindByProviderEventID(
+func (r *PaymentTransactionRepository) FindByRefID(
 	provider string,
-	providerEventID string,
+	refID string,
 ) (*model.PaymentTransaction, error) {
 	var payment model.PaymentTransaction
 	err := r.db.
-		Where("provider = ? AND provider_event_id = ?", provider, providerEventID).
+		Where("provider = ? AND ref_id = ?", provider, refID).
 		First(&payment).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrNotFound

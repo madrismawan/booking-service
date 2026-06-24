@@ -46,6 +46,7 @@ func (h *Handler) paymentWebhook(ctx *gin.Context) {
 		Message: "payment webhook processed",
 		Data: dto.PaymentWebhookResponse{
 			PaymentTransactionID: result.Payment.ID,
+			TransactionCode:      result.Payment.TransactionCode,
 			BookingID:            result.Booking.ID,
 			BookingStatus:        result.Booking.Status,
 			PaymentStatus:        result.Payment.Status,

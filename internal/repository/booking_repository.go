@@ -36,6 +36,17 @@ func (r *BookingRepository) FindByIDForUpdate(id int64) (*model.Booking, error) 
 	return &booking, err
 }
 
+func (r *BookingRepository) FindByID(id int64) (*model.Booking, error) {
+	var booking model.Booking
+	err := r.db.
+		Where("id = ? AND deleted_at IS NULL", id).
+		First(&booking).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, ErrNotFound
+	}
+	return &booking, err
+}
+
 func (r *BookingRepository) Save(booking *model.Booking) error {
 	return r.db.Save(booking).Error
 }

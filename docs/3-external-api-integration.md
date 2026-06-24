@@ -22,9 +22,8 @@ Payload:
 
 ```json
 {
-  "provider": "example-pay",
-  "provider_event_id": "evt_123",
-  "provider_transaction_id": "trx_123",
+  "provider": "midtrans",
+  "ref_id": "trx_123",
   "booking_id": 10,
   "payment_method": "virtual_account",
   "status": "paid",
@@ -33,9 +32,10 @@ Payload:
 }
 ```
 
-`provider` dan `provider_event_id` menjadi idempotency key. Callback yang sama
-mengembalikan transaksi sebelumnya dengan `duplicate: true` tanpa mengubah stok atau
-membuat event baru.
+Kombinasi `provider + ref_id` menjadi identitas bisnis dan idempotency key payment.
+Nilai `provider` dapat berupa `midtrans`, `doku`, atau provider lain. Jika callback
+dengan key yang sama sudah pernah diproses, service langsung mengembalikan payment
+sebelumnya dengan `duplicate: true` tanpa mengubah booking, stok, atau outbox.
 
 Callback sukses menjalankan satu transaksi database:
 
@@ -58,6 +58,23 @@ Status response:
 - `404`: booking tidak ditemukan.
 - `409`: booking tidak dapat dibayar, nominal berbeda, stok reservasi tidak sesuai,
   atau pembayaran sudah kedaluwarsa.
+
+Contoh response:
+
+```json
+{
+  "success": true,
+  "message": "payment webhook processed",
+  "data": {
+    "payment_transaction_id": 12,
+    "transaction_code": "PAY-8F21A1C53093F16008A7C635",
+    "booking_id": 10,
+    "booking_status": "paid",
+    "payment_status": "paid",
+    "duplicate": false
+  }
+}
+```
 
 ## Event Accounting
 

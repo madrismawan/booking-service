@@ -1,63 +1,82 @@
 # Database Schema - Ticket Booking System
 
+Dokumen ini mengikuti migration aktif pada folder `migration/`.
+
 ---
 
 ### 01. **events**
 
 **Purpose**: Menyimpan data konser atau acara.
 
-| Column          | Data Type      | Description                                           |
-| --------------- | -------------- | ----------------------------------------------------- |
-| `id`            | `BIGINT (PK)`  | Primary key.                                          |
-| `slug`          | `VARCHAR(160)` | Slug unik untuk URL booking event.                    |
-| `name`          | `VARCHAR(200)` | Nama konser atau acara.                               |
-| `description`   | `TEXT`         | Deskripsi acara.                                      |
-| `venue_name`    | `VARCHAR(200)` | Nama venue.                                           |
-| `venue_address` | `TEXT`         | Alamat venue.                                         |
-| `starts_at`     | `TIMESTAMPTZ`  | Waktu mulai acara.                                    |
-| `ends_at`       | `TIMESTAMPTZ`  | Waktu selesai acara.                                  |
-| `status`        | `VARCHAR(50)`  | Status acara: draft, published, cancelled, completed. |
-| `created_at`    | `TIMESTAMP`    | Timestamp column.                                     |
-| `updated_at`    | `TIMESTAMP`    | Timestamp column.                                     |
-| `deleted_at`    | `TIMESTAMP`    | Soft delete timestamp.                                |
+| Column          | Data Type      | Constraint / Default                  | Description                        |
+| --------------- | -------------- | ------------------------------------- | ---------------------------------- |
+| `id`            | `BIGSERIAL`    | Primary key                           | ID event.                          |
+| `slug`          | `VARCHAR(160)` | Not null, unique                      | Slug unik event.                   |
+| `name`          | `VARCHAR(200)` | Not null                              | Nama event.                        |
+| `description`   | `TEXT`         | Nullable                              | Deskripsi event.                   |
+| `venue_name`    | `VARCHAR(200)` | Not null                              | Nama venue.                        |
+| `venue_address` | `TEXT`         | Not null                              | Alamat venue.                      |
+| `starts_at`     | `TIMESTAMPTZ`  | Not null                              | Waktu mulai event.                 |
+| `ends_at`       | `TIMESTAMPTZ`  | Nullable                              | Waktu selesai event.               |
+| `status`        | `VARCHAR(50)`  | Not null, default `draft`             | Status event.                      |
+| `created_at`    | `TIMESTAMP`    | Not null, default `CURRENT_TIMESTAMP` | Waktu data dibuat.                 |
+| `updated_at`    | `TIMESTAMP`    | Not null, default `CURRENT_TIMESTAMP` | Waktu data diperbarui.             |
+| `deleted_at`    | `TIMESTAMP`    | Nullable                              | Waktu soft delete.                 |
+
+Indexes:
+
+- Unique `idx_events_slug` pada `slug`.
+- `idx_events_starts_at` pada `starts_at`.
+- `idx_events_status` pada `status`.
 
 ---
 
 ### 02. **ticket_categories**
 
-**Purpose**: Menyimpan data kategori tiket untuk setiap konser, seperti VIP, Festival, atau Tribune.
+**Purpose**: Menyimpan kategori tiket untuk setiap event.
 
-| Column            | Data Type      | Description                           |
-| ----------------- | -------------- | ------------------------------------- |
-| `id`              | `BIGINT (PK)`  | Primary key.                          |
-| `event_id`        | `BIGINT (FK)`  | Foreign key reference to `events.id`. |
-| `name`            | `VARCHAR(100)` | Nama kategori tiket.                  |
-| `description`     | `TEXT`         | Deskripsi kategori tiket.             |
-| `price`           | `BIGINT`       | Harga tiket.                          |
-| `sale_starts_at`  | `TIMESTAMPTZ`  | Waktu mulai penjualan tiket.          |
-| `sale_ends_at`    | `TIMESTAMPTZ`  | Waktu selesai penjualan tiket.        |
-| `max_per_booking` | `INTEGER`      | Maksimal jumlah tiket per booking.    |
-| `created_at`      | `TIMESTAMP`    | Timestamp column.                     |
-| `updated_at`      | `TIMESTAMP`    | Timestamp column.                     |
-| `deleted_at`      | `TIMESTAMP`    | Soft delete timestamp.                |
+| Column            | Data Type      | Constraint / Default                  | Description                           |
+| ----------------- | -------------- | ------------------------------------- | ------------------------------------- |
+| `id`              | `BIGSERIAL`    | Primary key                           | ID kategori tiket.                    |
+| `event_id`        | `BIGINT`       | Not null, FK ke `events.id`           | Event pemilik kategori.               |
+| `name`            | `VARCHAR(100)` | Not null                              | Nama kategori tiket.                  |
+| `description`     | `TEXT`         | Nullable                              | Deskripsi kategori.                   |
+| `price`           | `BIGINT`       | Not null                              | Harga satu tiket.                     |
+| `sale_starts_at`  | `TIMESTAMPTZ`  | Nullable                              | Waktu mulai penjualan.                |
+| `sale_ends_at`    | `TIMESTAMPTZ`  | Nullable                              | Waktu selesai penjualan.              |
+| `max_per_booking` | `INTEGER`      | Not null, default `4`                 | Maksimal tiket dalam satu booking.    |
+| `created_at`      | `TIMESTAMP`    | Not null, default `CURRENT_TIMESTAMP` | Waktu data dibuat.                    |
+| `updated_at`      | `TIMESTAMP`    | Not null, default `CURRENT_TIMESTAMP` | Waktu data diperbarui.                |
+| `deleted_at`      | `TIMESTAMP`    | Nullable                              | Waktu soft delete.                    |
+
+Indexes:
+
+- `idx_ticket_categories_event_id` pada `event_id`.
 
 ---
 
 ### 03. **ticket_stocks**
 
-**Purpose**: Menyimpan stok tiket per kategori dan mencegah overselling saat traffic tinggi.
+**Purpose**: Menyimpan stok untuk setiap kategori tiket.
 
-| Column               | Data Type     | Description                                      |
-| -------------------- | ------------- | ------------------------------------------------ |
-| `id`                 | `BIGINT (PK)` | Primary key.                                     |
-| `ticket_category_id` | `BIGINT (FK)` | Foreign key reference to `ticket_categories.id`. |
-| `total_quantity`     | `INTEGER`     | Total jumlah tiket.                              |
-| `available_quantity` | `INTEGER`     | Jumlah tiket yang tersedia untuk booking.        |
-| `reserved_quantity`  | `INTEGER`     | Jumlah tiket yang sedang direservasi.            |
-| `sold_quantity`      | `INTEGER`     | Jumlah tiket yang sudah terjual.                 |
-| `version`            | `BIGINT`      | Versi monotonik untuk sinkronisasi stok.         |
-| `created_at`         | `TIMESTAMP`   | Timestamp column.                                |
-| `updated_at`         | `TIMESTAMP`   | Timestamp column.                                |
+| Column               | Data Type   | Constraint / Default                  | Description                         |
+| -------------------- | ----------- | ------------------------------------- | ----------------------------------- |
+| `id`                 | `BIGSERIAL` | Primary key                           | ID stok.                            |
+| `ticket_category_id` | `BIGINT`    | Not null, unique, FK                  | Referensi ke `ticket_categories.id` |
+| `total_quantity`     | `INTEGER`   | Not null                              | Total stok tiket.                   |
+| `available_quantity` | `INTEGER`   | Not null                              | Stok yang masih tersedia.           |
+| `reserved_quantity`  | `INTEGER`   | Not null, default `0`                 | Stok yang sedang direservasi.       |
+| `sold_quantity`      | `INTEGER`   | Not null, default `0`                 | Stok yang sudah terjual.            |
+| `version`            | `BIGINT`    | Not null, default `1`                 | Versi perubahan stok.               |
+| `created_at`         | `TIMESTAMP` | Not null, default `CURRENT_TIMESTAMP` | Waktu data dibuat.                  |
+| `updated_at`         | `TIMESTAMP` | Not null, default `CURRENT_TIMESTAMP` | Waktu data diperbarui.              |
+
+Check constraint `ticket_stocks_quantity_check` memastikan semua quantity tidak
+negatif dan:
+
+```text
+available_quantity + reserved_quantity + sold_quantity = total_quantity
+```
 
 ---
 
@@ -65,148 +84,168 @@
 
 **Purpose**: Menyimpan data pembeli tiket tanpa akun user.
 
-| Column       | Data Type      | Description            |
-| ------------ | -------------- | ---------------------- |
-| `id`         | `BIGINT (PK)`  | Primary key.           |
-| `name`       | `VARCHAR(255)` | Nama lengkap pembeli.  |
-| `email`      | `VARCHAR(255)` | Email pembeli.         |
-| `phone`      | `VARCHAR(20)`  | Nomor telepon pembeli. |
-| `address`    | `TEXT`         | Alamat pembeli.        |
-| `created_at` | `TIMESTAMP`    | Timestamp column.      |
-| `updated_at` | `TIMESTAMP`    | Timestamp column.      |
-| `deleted_at` | `TIMESTAMP`    | Soft delete timestamp. |
+| Column       | Data Type      | Constraint / Default                  | Description            |
+| ------------ | -------------- | ------------------------------------- | ---------------------- |
+| `id`         | `BIGSERIAL`    | Primary key                           | ID guest.              |
+| `name`       | `VARCHAR(255)` | Not null                              | Nama pembeli.          |
+| `email`      | `VARCHAR(255)` | Not null                              | Email pembeli.         |
+| `phone`      | `VARCHAR(20)`  | Not null                              | Nomor telepon pembeli. |
+| `address`    | `TEXT`         | Not null                              | Alamat pembeli.        |
+| `created_at` | `TIMESTAMP`    | Not null, default `CURRENT_TIMESTAMP` | Waktu data dibuat.     |
+| `updated_at` | `TIMESTAMP`    | Not null, default `CURRENT_TIMESTAMP` | Waktu data diperbarui. |
+| `deleted_at` | `TIMESTAMP`    | Nullable                              | Waktu soft delete.     |
+
+Indexes:
+
+- `idx_guests_email` pada `email`.
 
 ---
 
 ### 05. **bookings**
 
-**Purpose**: Menyimpan data booking tiket yang dibuat oleh guest.
+**Purpose**: Menyimpan booking dan snapshot data guest serta event.
 
-| Column                | Data Type      | Description                                                |
-| --------------------- | -------------- | ---------------------------------------------------------- |
-| `id`                  | `BIGINT (PK)`  | Primary key.                                               |
-| `booking_code`        | `VARCHAR(40)`  | Kode booking unik yang ditampilkan ke pembeli.             |
-| `guest_id`            | `BIGINT (FK)`  | Foreign key reference to `guests.id`.                      |
-| `guest_name`          | `VARCHAR(255)` | Snapshot nama lengkap pembeli saat booking dibuat.         |
-| `guest_email`         | `VARCHAR(255)` | Snapshot email pembeli saat booking dibuat.                |
-| `guest_phone`         | `VARCHAR(20)`  | Snapshot nomor telepon pembeli saat booking dibuat.        |
-| `guest_address`       | `TEXT`         | Snapshot alamat pembeli saat booking dibuat.               |
-| `event_id`            | `BIGINT (FK)`  | Foreign key reference to `events.id`.                      |
-| `event_slug`          | `VARCHAR(160)` | Snapshot slug event saat booking dibuat.                   |
-| `event_name`          | `VARCHAR(200)` | Snapshot nama event saat booking dibuat.                   |
-| `event_venue_name`    | `VARCHAR(200)` | Snapshot nama venue saat booking dibuat.                   |
-| `event_venue_address` | `TEXT`         | Snapshot alamat venue saat booking dibuat.                 |
-| `event_starts_at`     | `TIMESTAMPTZ`  | Snapshot waktu mulai event saat booking dibuat.            |
-| `event_ends_at`       | `TIMESTAMPTZ`  | Snapshot waktu selesai event saat booking dibuat.          |
-| `status`              | `VARCHAR(50)`  | Status booking: pending_payment, paid, cancelled, expired. |
-| `total_ticket`        | `INTEGER`      | Total jumlah tiket yang dibooking.                         |
-| `total_price`         | `BIGINT`       | Total harga booking.                                       |
-| `expires_at`          | `TIMESTAMPTZ`  | Waktu kedaluwarsa pembayaran.                              |
-| `paid_at`             | `TIMESTAMPTZ`  | Waktu pembayaran berhasil.                                 |
-| `cancelled_at`        | `TIMESTAMPTZ`  | Waktu booking dibatalkan.                                  |
-| `created_at`          | `TIMESTAMP`    | Timestamp column.                                          |
-| `updated_at`          | `TIMESTAMP`    | Timestamp column.                                          |
-| `deleted_at`          | `TIMESTAMP`    | Soft delete timestamp.                                     |
+| Column                | Data Type      | Constraint / Default                    | Description                        |
+| --------------------- | -------------- | --------------------------------------- | ---------------------------------- |
+| `id`                  | `BIGSERIAL`    | Primary key                             | ID booking.                        |
+| `booking_code`        | `VARCHAR(40)`  | Not null, unique                        | Kode booking.                      |
+| `guest_id`            | `BIGINT`       | Not null, FK ke `guests.id`             | Guest pemilik booking.             |
+| `guest_name`          | `VARCHAR(255)` | Not null                                | Snapshot nama guest.               |
+| `guest_email`         | `VARCHAR(255)` | Not null                                | Snapshot email guest.              |
+| `guest_phone`         | `VARCHAR(20)`  | Not null                                | Snapshot nomor telepon guest.      |
+| `guest_address`       | `TEXT`         | Not null                                | Snapshot alamat guest.             |
+| `event_id`            | `BIGINT`       | Not null, FK ke `events.id`             | Event yang dipesan.                |
+| `event_slug`          | `VARCHAR(160)` | Not null                                | Snapshot slug event.               |
+| `event_name`          | `VARCHAR(200)` | Not null                                | Snapshot nama event.               |
+| `event_venue_name`    | `VARCHAR(200)` | Not null                                | Snapshot nama venue.               |
+| `event_venue_address` | `TEXT`         | Not null                                | Snapshot alamat venue.             |
+| `event_starts_at`     | `TIMESTAMPTZ`  | Not null                                | Snapshot waktu mulai event.        |
+| `event_ends_at`       | `TIMESTAMPTZ`  | Nullable                                | Snapshot waktu selesai event.      |
+| `status`              | `VARCHAR(50)`  | Not null, default `pending_payment`     | Status booking.                    |
+| `total_ticket`        | `INTEGER`      | Not null                                | Total tiket.                       |
+| `total_price`         | `BIGINT`       | Not null                                | Total harga.                       |
+| `expires_at`          | `TIMESTAMPTZ`  | Not null                                | Batas waktu pembayaran.            |
+| `paid_at`             | `TIMESTAMPTZ`  | Nullable                                | Waktu pembayaran berhasil.         |
+| `cancelled_at`        | `TIMESTAMPTZ`  | Nullable                                | Waktu booking dibatalkan.          |
+| `created_at`          | `TIMESTAMP`    | Not null, default `CURRENT_TIMESTAMP`   | Waktu data dibuat.                 |
+| `updated_at`          | `TIMESTAMP`    | Not null, default `CURRENT_TIMESTAMP`   | Waktu data diperbarui.             |
+| `deleted_at`          | `TIMESTAMP`    | Nullable                                | Waktu soft delete.                 |
+
+Indexes:
+
+- `idx_bookings_guest_id` pada `guest_id`.
+- `idx_bookings_event_id` pada `event_id`.
+- `idx_bookings_status` pada `status`.
 
 ---
 
 ### 06. **booking_items**
 
-**Purpose**: Menyimpan detail kategori tiket yang dipilih dalam satu booking.
+**Purpose**: Menyimpan detail kategori tiket dalam booking.
 
-| Column                        | Data Type      | Description                                            |
-| ----------------------------- | -------------- | ------------------------------------------------------ |
-| `id`                          | `BIGINT (PK)`  | Primary key.                                           |
-| `booking_id`                  | `BIGINT (FK)`  | Foreign key reference to `bookings.id`.                |
-| `ticket_category_id`          | `BIGINT (FK)`  | Foreign key reference to `ticket_categories.id`.       |
-| `ticket_category_name`        | `VARCHAR(100)` | Snapshot nama kategori tiket saat booking dibuat.      |
-| `ticket_category_description` | `TEXT`         | Snapshot deskripsi kategori tiket saat booking dibuat. |
-| `quantity`                    | `INTEGER`      | Jumlah tiket untuk kategori ini.                       |
-| `unit_price`                  | `BIGINT`       | Harga satuan tiket saat booking dibuat.                |
-| `subtotal_price`              | `BIGINT`       | Total harga untuk item ini.                            |
-| `created_at`                  | `TIMESTAMP`    | Timestamp column.                                      |
-| `updated_at`                  | `TIMESTAMP`    | Timestamp column.                                      |
+| Column                        | Data Type      | Constraint / Default                  | Description                         |
+| ----------------------------- | -------------- | ------------------------------------- | ----------------------------------- |
+| `id`                          | `BIGSERIAL`    | Primary key                           | ID item booking.                    |
+| `booking_id`                  | `BIGINT`       | Not null, FK ke `bookings.id`         | Booking pemilik item.               |
+| `ticket_category_id`          | `BIGINT`       | Not null, FK ke `ticket_categories.id`| Kategori tiket.                     |
+| `ticket_category_name`        | `VARCHAR(100)` | Not null                              | Snapshot nama kategori.             |
+| `ticket_category_description` | `TEXT`         | Nullable                              | Snapshot deskripsi kategori.        |
+| `quantity`                    | `INTEGER`      | Not null                              | Jumlah tiket.                       |
+| `unit_price`                  | `BIGINT`       | Not null                              | Harga satuan saat booking.          |
+| `subtotal_price`              | `BIGINT`       | Not null                              | Subtotal item.                      |
+| `created_at`                  | `TIMESTAMP`    | Not null, default `CURRENT_TIMESTAMP` | Waktu data dibuat.                  |
+| `updated_at`                  | `TIMESTAMP`    | Not null, default `CURRENT_TIMESTAMP` | Waktu data diperbarui.              |
+
+Indexes:
+
+- `idx_booking_items_booking_id` pada `booking_id`.
+- `idx_booking_items_ticket_category_id` pada `ticket_category_id`.
 
 ---
 
 ### 07. **payment_transactions**
 
-**Purpose**: Menyimpan transaksi pembayaran untuk sebuah booking.
+**Purpose**: Menyimpan transaksi pembayaran dari payment provider.
 
-| Column                    | Data Type      | Description                                                 |
-| ------------------------- | -------------- | ----------------------------------------------------------- |
-| `id`                      | `BIGINT (PK)`  | Primary key.                                                |
-| `booking_id`              | `BIGINT (FK)`  | Foreign key reference to `bookings.id`.                     |
-| `transaction_code`        | `VARCHAR(80)`  | Kode transaksi internal.                                    |
-| `provider`                | `VARCHAR(80)`  | Nama payment provider.                                      |
-| `provider_transaction_id` | `VARCHAR(120)` | ID transaksi dari payment provider.                         |
-| `provider_event_id`       | `VARCHAR(120)` | ID event webhook dari payment provider.                     |
-| `payment_method`          | `VARCHAR(80)`  | Metode pembayaran, misalnya virtual_account atau ewallet.   |
-| `status`                  | `VARCHAR(50)`  | Status transaksi: pending, paid, failed, expired, refunded. |
-| `amount`                  | `BIGINT`       | Nominal transaksi.                                          |
-| `payload`                 | `JSONB`        | Payload dari payment provider.                              |
-| `paid_at`                 | `TIMESTAMPTZ`  | Waktu transaksi berhasil dibayar.                           |
-| `expired_at`              | `TIMESTAMPTZ`  | Waktu transaksi kedaluwarsa.                                |
-| `created_at`              | `TIMESTAMP`    | Timestamp column.                                           |
-| `updated_at`              | `TIMESTAMP`    | Timestamp column.                                           |
+| Column             | Data Type      | Constraint / Default                  | Description                              |
+| ------------------ | -------------- | ------------------------------------- | ---------------------------------------- |
+| `id`               | `BIGSERIAL`    | Primary key                           | ID payment.                              |
+| `booking_id`       | `BIGINT`       | Not null, FK ke `bookings.id`         | Booking yang dibayar.                    |
+| `transaction_code` | `VARCHAR(80)`  | Not null                              | Kode transaksi internal.                 |
+| `provider`         | `VARCHAR(80)`  | Not null                              | Nama provider, misalnya Midtrans/DOKU.   |
+| `ref_id`           | `VARCHAR(120)` | Not null                              | ID transaksi atau referensi provider.    |
+| `payment_method`   | `VARCHAR(80)`  | Nullable                              | Metode pembayaran.                       |
+| `status`           | `VARCHAR(50)`  | Not null                              | Status payment.                          |
+| `amount`           | `BIGINT`       | Not null                              | Nominal pembayaran.                      |
+| `payload`          | `JSONB`        | Not null, default `{}`                | Payload asli provider.                   |
+| `paid_at`          | `TIMESTAMPTZ`  | Nullable                              | Waktu pembayaran berhasil.               |
+| `expired_at`       | `TIMESTAMPTZ`  | Nullable                              | Waktu payment kedaluwarsa.               |
+| `created_at`       | `TIMESTAMP`    | Not null, default `CURRENT_TIMESTAMP` | Waktu data dibuat.                       |
+| `updated_at`       | `TIMESTAMP`    | Not null, default `CURRENT_TIMESTAMP` | Waktu data diperbarui.                   |
 
-<!--
+Indexes:
+
+- `idx_payment_transactions_booking_id` pada `booking_id`.
+- Unique `idx_payment_transactions_transaction_code` pada `transaction_code`.
+- Unique `idx_payment_transactions_provider_ref_id` pada kombinasi `provider, ref_id`.
 
 ---
 
-### 08. **idempotency_keys**
+### 08. **waiting_rooms**
 
-**Purpose**: Menyimpan data idempotency untuk mencegah booking ganda dari request yang sama.
+**Purpose**: Menyimpan antrean user sebelum memperoleh akses checkout.
 
-| Column          | Data Type      | Description                             |
-| --------------- | -------------- | --------------------------------------- |
-| `id`            | `BIGINT (PK)`  | Primary key.                            |
-| `key`           | `VARCHAR(150)` | Idempotency key dari client.            |
-| `request_hash`  | `CHAR(64)`     | Hash dari payload request.              |
-| `booking_id`    | `BIGINT (FK)`  | Foreign key reference to `bookings.id`. |
-| `response_code` | `INTEGER`      | HTTP response code yang disimpan.       |
-| `response_body` | `JSONB`        | HTTP response body yang disimpan.       |
-| `locked_until`  | `TIMESTAMPTZ`  | Waktu kedaluwarsa lock sementara.       |
-| `created_at`    | `TIMESTAMP`    | Timestamp column.                       |
-| `updated_at`    | `TIMESTAMP`    | Timestamp column.                       |
+| Column               | Data Type      | Constraint / Default                  | Description                           |
+| -------------------- | -------------- | ------------------------------------- | ------------------------------------- |
+| `id`                 | `BIGSERIAL`    | Primary key                           | ID antrean.                           |
+| `event_id`           | `BIGINT`       | Not null, FK ke `events.id`           | Event yang dituju.                    |
+| `event_name`         | `VARCHAR(200)` | Not null                              | Snapshot nama event.                  |
+| `ticket_category_id` | `BIGINT`       | Not null, FK ke `ticket_categories.id`| Kategori tiket yang dituju.           |
+| `queue_token`        | `VARCHAR(80)`  | Not null, unique                      | Token antrean.                        |
+| `checkout_token`     | `VARCHAR(80)`  | Nullable, unique                      | Token akses checkout.                 |
+| `booking_id`         | `BIGINT`       | Nullable, FK ke `bookings.id`         | Booking yang dibuat dari antrean.     |
+| `status`             | `VARCHAR(50)`  | Not null, default `waiting`           | Status antrean.                       |
+| `failed_reason`      | `TEXT`         | Nullable                              | Alasan proses antrean gagal.          |
+| `expired_at`         | `TIMESTAMPTZ`  | Nullable                              | Waktu token kedaluwarsa.              |
+| `created_at`         | `TIMESTAMP`    | Not null, default `CURRENT_TIMESTAMP` | Waktu data dibuat.                    |
+| `updated_at`         | `TIMESTAMP`    | Not null, default `CURRENT_TIMESTAMP` | Waktu data diperbarui.                |
+
+Indexes:
+
+- `idx_waiting_rooms_event_name` pada `event_name`.
+- `idx_waiting_rooms_ticket_category_id` pada `ticket_category_id`.
+- `idx_waiting_rooms_status` pada `status`.
+- `idx_waiting_rooms_queue_token` pada `queue_token`.
+- `idx_waiting_rooms_checkout_token` pada `checkout_token`.
 
 ---
 
 ### 09. **outbox_events**
 
-**Purpose**: Menyimpan event untuk integrasi external, seperti sinkronisasi accounting.
+**Purpose**: Menyimpan event yang akan dipublikasikan oleh outbox worker.
 
-| Column            | Data Type      | Description                                              |
-| ----------------- | -------------- | -------------------------------------------------------- |
-| `id`              | `BIGINT (PK)`  | Primary key.                                             |
-| `aggregate_type`  | `VARCHAR(80)`  | Nama aggregate, misalnya booking atau transaction.       |
-| `aggregate_id`    | `BIGINT`       | ID aggregate terkait.                                    |
-| `event_type`      | `VARCHAR(120)` | Jenis event, misalnya booking.created atau booking.paid. |
-| `payload`         | `JSONB`        | Payload event.                                           |
-| `status`          | `VARCHAR(50)`  | Status outbox: pending, processing, sent, failed.        |
-| `attempts`        | `INTEGER`      | Jumlah percobaan pengiriman.                             |
-| `next_attempt_at` | `TIMESTAMPTZ`  | Waktu retry berikutnya.                                  |
-| `processed_at`    | `TIMESTAMPTZ`  | Waktu event berhasil diproses.                           |
-| `last_error`      | `TEXT`         | Pesan error terakhir saat pengiriman.                    |
-| `created_at`      | `TIMESTAMP`    | Timestamp column.                                        |
-| `updated_at`      | `TIMESTAMP`    | Timestamp column.                                        |
+| Column            | Data Type      | Constraint / Default                  | Description                         |
+| ----------------- | -------------- | ------------------------------------- | ----------------------------------- |
+| `id`              | `BIGSERIAL`    | Primary key                           | ID outbox event.                    |
+| `aggregate_type`  | `VARCHAR(80)`  | Not null                              | Tipe aggregate sumber event.        |
+| `aggregate_id`    | `BIGINT`       | Not null                              | ID aggregate sumber event.          |
+| `event_type`      | `VARCHAR(120)` | Not null                              | Jenis event.                        |
+| `payload`         | `JSONB`        | Not null                              | Payload event.                      |
+| `status`          | `VARCHAR(50)`  | Not null, default `pending`           | Status pemrosesan outbox.           |
+| `attempts`        | `INTEGER`      | Not null, default `0`                 | Jumlah percobaan pemrosesan.        |
+| `next_attempt_at` | `TIMESTAMPTZ`  | Not null, default `CURRENT_TIMESTAMP` | Waktu percobaan berikutnya.         |
+| `processed_at`    | `TIMESTAMPTZ`  | Nullable                              | Waktu event berhasil diproses.      |
+| `last_error`      | `TEXT`         | Nullable                              | Error terakhir.                     |
+| `created_at`      | `TIMESTAMP`    | Not null, default `CURRENT_TIMESTAMP` | Waktu data dibuat.                  |
+| `updated_at`      | `TIMESTAMP`    | Not null, default `CURRENT_TIMESTAMP` | Waktu data diperbarui.              |
 
----
+Check constraint `outbox_events_status_check` membatasi status menjadi:
 
-### 10. **audit_logs**
+```text
+pending, processing, sent
+```
 
-**Purpose**: Menyimpan aktivitas penting sistem untuk kebutuhan traceability.
+Indexes:
 
-| Column        | Data Type      | Description                           |
-| ------------- | -------------- | ------------------------------------- |
-| `id`          | `BIGINT (PK)`  | Primary key.                          |
-| `guest_id`    | `BIGINT (FK)`  | Foreign key reference to `guests.id`. |
-| `action`      | `VARCHAR(120)` | Nama aksi.                            |
-| `entity_type` | `VARCHAR(80)`  | Tipe entity yang terdampak aksi.      |
-| `entity_id`   | `BIGINT`       | ID entity yang terdampak aksi.        |
-| `metadata`    | `JSONB`        | Metadata audit tambahan.              |
-| `ip_address`  | `VARCHAR(45)`  | Alamat IP actor.                      |
-| `user_agent`  | `TEXT`         | User agent actor.                     |
-| `created_at`  | `TIMESTAMP`    | Timestamp column.                     |
-
--->
+- `idx_outbox_events_pending` pada kombinasi `status, next_attempt_at, id`.
+- `idx_outbox_events_aggregate` pada kombinasi `aggregate_type, aggregate_id`.
