@@ -45,10 +45,4 @@ tidak tersedia.
 - [Duplicate payment webhook](4-duplicate-request.md)
 - [Sinkronisasi data stock](5-data-synchronization.md)
 - [Database schema](db-schema.md)
-
-Integration test untuk setiap skenario tersedia pada folder `test/` dan dapat
-dijalankan dengan:
-
-```bash
-make test-docs
-```
+- [Persiapan dan cara menjalankan project](getting-stard.md)
