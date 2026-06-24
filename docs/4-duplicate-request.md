@@ -114,26 +114,6 @@ booking service.
 Advisory lock mencegah request diproses bersamaan, sedangkan unique index memastikan
 database tetap menolak duplicate jika terjadi kesalahan pada logic aplikasi.
 
-## Database Transaction
-
-Seluruh proses dijalankan di dalam satu database transaction:
-
-```go
-err := s.txManager.Transaction(func(tx *gorm.DB) error {
-```
-
-Di dalam transaction tersebut, service:
-
-1. Mengunci idempotency key
-2. Memeriksa payment yang sudah tersimpan
-3. Membuat payment transaction
-4. Mengubah booking menjadi `paid`
-5. Memindahkan stock dari `reserved` menjadi `sold`
-6. Membuat outbox event accounting
-
-Jika salah satu proses gagal, seluruh perubahan dibatalkan. Dengan demikian, payment
-tidak mungkin tersimpan tanpa update booking, stock, dan outbox yang sesuai.
-
 ## Trade-off Pencegahan Duplicate
 
 1. Request duplicate dapat menunggu
@@ -145,8 +125,3 @@ tidak mungkin tersimpan tanpa update booking, stock, dan outbox yang sesuai.
 
    Provider harus mengirim `ref_id` yang sama pada setiap retry. Jika provider
    mengirim ID baru, request akan dianggap sebagai payment baru.
-
-3. Duplicate langsung dianggap sudah selesai
-
-   Ketika `provider + ref_id` sudah tersimpan, service tidak memproses payload baru.
-   Service langsung mengembalikan payment sebelumnya sebagai response sukses.

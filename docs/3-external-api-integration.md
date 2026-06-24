@@ -50,32 +50,6 @@ Callback sukses menjalankan satu transaksi database:
 
 Jika salah satu proses gagal, seluruh perubahan rollback.
 
-Status response:
-
-- `200`: callback diproses atau merupakan callback duplikat.
-- `400`: payload tidak valid.
-- `401`: signature tidak valid.
-- `404`: booking tidak ditemukan.
-- `409`: booking tidak dapat dibayar, nominal berbeda, stok reservasi tidak sesuai,
-  atau pembayaran sudah kedaluwarsa.
-
-Contoh response:
-
-```json
-{
-  "success": true,
-  "message": "payment webhook processed",
-  "data": {
-    "payment_transaction_id": 12,
-    "transaction_code": "PAY-8F21A1C53093F16008A7C635",
-    "booking_id": 10,
-    "booking_status": "paid",
-    "payment_status": "paid",
-    "duplicate": false
-  }
-}
-```
-
 ## Event Accounting
 
 Outbox worker mengirim event ke:

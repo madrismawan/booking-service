@@ -57,8 +57,6 @@ Kode ini menggunakan konsep `SELECT ... FOR UPDATE`.
 
 Dengan `FOR UPDATE`, row stock yang sedang diproses akan dikunci selama transaction masih berjalan. Request lain yang ingin membaca row yang sama untuk diubah harus menunggu sampai transaction sebelumnya selesai.
 
-Tujuannya adalah supaya proses cek stock dan decrement stock berjalan berurutan, bukan saling tumpang tindih.
-
 ## Trade-off Menggunakan `FOR UPDATE`
 
 1. Request lain bisa menunggu
